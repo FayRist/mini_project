@@ -1,0 +1,8 @@
+
+      Report for directory: B
+
+      Size before zip: 0.0059 KB
+      Size after zip: 0.3984 KB
+      Compression reduction: -6.54%
+
+    

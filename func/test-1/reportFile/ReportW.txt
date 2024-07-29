@@ -1,0 +1,8 @@
+
+      Report for directory: W
+
+      Size before zip: 0.0049 KB
+      Size after zip: 0.2158 KB
+      Compression reduction: -4.22%
+
+    

@@ -1,0 +1,8 @@
+
+      Report for directory: Y
+
+      Size before zip: 0.0088 KB
+      Size after zip: 0.3291 KB
+      Compression reduction: -3.56%
+
+    

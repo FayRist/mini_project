@@ -1,0 +1,8 @@
+
+      Report for directory: A
+
+      Size before zip: 0.0176 KB
+      Size after zip: 0.9727 KB
+      Compression reduction: -5.31%
+
+    

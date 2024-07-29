@@ -1,0 +1,8 @@
+
+      Report for directory: T
+
+      Size before zip: 0.0166 KB
+      Size after zip: 0.6338 KB
+      Compression reduction: -3.63%
+
+    

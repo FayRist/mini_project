@@ -1,0 +1,43 @@
+!/node_modules
+/node_modules/*
+migrations/database.json
+modelClient/
+modelService/
+# ignore Config 
+configuration/config.js
+# ignore Package
+package-lock.json
+deployAngular.bat
+deployServer.bat
+startPipeline.js
+# ignore Log
+log/*
+# Ignore New Folder
+public/export/*
+public/Scan/*
+# Ignore Images
+public/images/Admission note/*
+public/images/Admission Note/*
+public/images/Clinical/*
+public/images/Clinical Summary/*
+public/images/History washing system/*
+public/images/New Admit Patient/*
+public/images/Nurse note/*
+public/images/OPD Card/*
+public/images/Patients/*
+public/images/Progression note/*
+public/images/Upload/*
+public/images/User/*
+public/images/Multidisciplinary/*
+public/images/Scan/Patient/*
+public/images/System/logo_bw.png
+public/images/System/logo_bw.svg
+public/images/System/logo_report.png
+public/images/System/logo_report.svg
+public/images/Consult order/*
+public/images/Consult report/*
+
+hostmerge_svr.rar
+migrations/database.json
+
+controller/api/_accessToken.json
