@@ -32,7 +32,7 @@ async function convertTextToFile(word, directoryPath) {
   const firstLevelDir = path.join(directoryPath, trimmedWord[0].toUpperCase());
   const secondLevelDir = path.join(firstLevelDir, trimmedWord[1].toUpperCase());
   const fileName = `${trimmedWord}.txt`;
-  const content = (trimmedWord + '\n').repeat(1);
+  const content = (trimmedWord + '\n').repeat(100);
   const filePath = path.join(secondLevelDir, fileName);
 
   try {
@@ -67,7 +67,7 @@ async function zipDirectories(sourceDir, targetDir) {
 
 // ฟังก์ชั่นสำหรับ ZIP โฟลเดอร์เดี่ยว
 function zipDirectory(sourceDir, outPath) {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     const output = fs.createWriteStream(outPath);
     const archive = archiver('zip', {
       zlib: { level: 9 } // ตั้งค่า compression level
@@ -76,8 +76,8 @@ function zipDirectory(sourceDir, outPath) {
     output.on('close', () => resolve());
     archive.on('error', err => reject(err));
     archive.pipe(output);
-    archive.directory(sourceDir, false);
-    archive.finalize();
+    await archive.directory(sourceDir, false);
+    await archive.finalize();
   });
 }
 
@@ -97,20 +97,20 @@ async function readFile() {
     // สร้างไฟล์ตามแต่ละคำศัพท์ทีละชุด
     await words.reduce((promise, word) => {
       const wordConverter = word ? word.toLowerCase() : word;
-      return promise.then(() => convertTextToFile(wordConverter, directoryPath));
+      return promise.then(async () => await convertTextToFile(wordConverter, directoryPath));
     }, Promise.resolve());
 
     // พิมพ์ข้อความ success เมื่อการทำงานทั้งหมดเสร็จสิ้น
     console.log('\nAll files have been created successfully.');
-    
-    // สร้างรายงานขนาดโฟลเดอร์และลิสต์ของไฟล์
-    await generateReports(directoryPath, reportFolderPath);
-    console.log('\nAll files Reports have been created successfully.');
-
 
     // ZIP โฟลเดอร์ level 1
     await zipDirectories(directoryPath, zipFolderPath);
     console.log('\nAll files have been Zip successfully.');
+        
+    // สร้างรายงานขนาดโฟลเดอร์และลิสต์ของไฟล์
+    await generateReports(directoryPath, reportFolderPath);
+    console.log('\nAll files Reports have been created successfully.');
+
 
 
   } catch (err) {
@@ -167,11 +167,8 @@ async function createReportFile(dirPath, reportPath, zipFilePath) {
     
     // คำนวณขนาดของไฟล์ ZIP
     const zipSize = getFileSize(zipFilePath);
-    console.log('folderSizeBefore size: ', folderSizeBefore);
-    console.log('Zip size: ', zipSize);
     // คำนวณเปอร์เซ็นต์การบีบอัด
-    const percentageReduction = (((folderSizeBefore / 1024) - (zipSize / 1024)) / folderSizeBefore) * 100;
-
+    const percentageReduction = (((folderSizeBefore / 1024) - (zipSize / 1024)) / (folderSizeBefore / 1024)) * 100;
     // สร้างเนื้อหาของรายงาน
     const reportContent = `
       Report for directory: ${path.basename(dirPath)}
