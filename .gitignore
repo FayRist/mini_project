@@ -37,6 +37,12 @@ public/images/System/logo_report.svg
 public/images/Consult order/*
 public/images/Consult report/*
 
+fileExport
+reportFile
+zipFile
+database
+pdfFile
+
 hostmerge_svr.rar
 migrations/database.json
 

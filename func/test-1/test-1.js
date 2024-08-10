@@ -3,11 +3,75 @@ const fsPromises = require('fs').promises;
 const fs = require('fs');
 const path = require('path');
 const archiver = require('archiver');
+const { Sequelize, DataTypes, Op } = require('sequelize');
+const PDFDocument = require('pdfkit');
 
 const directoryPath = '/test-project-Node/func/test-1/fileExport';
 const inputFilePath = '/test-project-Node/public/data/20k-word.txt';
 const zipFolderPath = '/test-project-Node/func/test-1/zipFile';
 const reportFolderPath = '/test-project-Node/func/test-1/reportFile';
+const pdfFolderPath = '/test-project-Node/func/test-1/pdfFile';
+
+// ตั้งค่าโฟลเดอร์ฐานข้อมูล
+const databaseDir = path.join(__dirname, 'database');
+if (!fs.existsSync(databaseDir)) {
+  fs.mkdirSync(databaseDir, { recursive: true });
+}
+// ตั้งค่า Sequelize สำหรับ SQLite โดยปิดการแสดงผล query logs
+const sequelize = new Sequelize({
+  dialect: 'sqlite',
+  storage: path.join(databaseDir, 'dictionary.sqlite'),
+  logging: false // ปิดการแสดงผล query logs
+});
+// กำหนด model สำหรับคำศัพท์
+const Word = sequelize.define('Word', {
+  word: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    unique: true
+  }
+}, {
+  timestamps: false
+});
+
+// ฟังก์ชั่นสำหรับอ่านไฟล์และสร้างไฟล์ตามแต่ละคำศัพท์
+async function readFile() {
+  if (!inputFilePath || !directoryPath) {
+    console.error('Input file path or directory path is not defined.');
+    process.exit(1);
+  }
+
+  try {
+    const data = await fsPromises.readFile(inputFilePath, 'utf8');
+    // แยกคำศัพท์ออกเป็นรายการ
+    const words = data.split('\n').filter(word => word.trim() !== '');
+
+    // สร้างไฟล์ตามแต่ละคำศัพท์ทีละชุด
+    // await words.reduce((promise, word) => {
+    //   const wordConverter = word ? word.toLowerCase() : word;
+    //   return promise.then(async () => await convertTextToFile(wordConverter, directoryPath));
+    // }, Promise.resolve());
+
+    // // พิมพ์ข้อความ success เมื่อการทำงานทั้งหมดเสร็จสิ้น
+    // console.log('\nAll files have been created successfully.');
+
+    // // ZIP โฟลเดอร์ level 1
+    // await zipDirectories(directoryPath, zipFolderPath);
+    // console.log('\nAll files have been Zip successfully.');
+        
+    // // สร้างรายงานขนาดโฟลเดอร์และลิสต์ของไฟล์
+    // await generateReports(directoryPath, reportFolderPath);
+    // console.log('\nAll files Reports have been created successfully.');
+
+    // สร้างไฟล์
+    await manageDatabase();
+    await exportToPDF();
+    console.log('\n files Manage Database have been created successfully.');
+
+  } catch (err) {
+    console.error('Error reading file', err);
+  }
+}
 
 // ฟังก์ชั่นสำหรับสร้างไดเรกทอรีหากยังไม่มี
 async function ensureDirectoryExistence(dirPath) {
@@ -81,43 +145,6 @@ function zipDirectory(sourceDir, outPath) {
   });
 }
 
-
-// ฟังก์ชั่นสำหรับอ่านไฟล์และสร้างไฟล์ตามแต่ละคำศัพท์
-async function readFile() {
-  if (!inputFilePath || !directoryPath) {
-    console.error('Input file path or directory path is not defined.');
-    process.exit(1);
-  }
-
-  try {
-    const data = await fsPromises.readFile(inputFilePath, 'utf8');
-    // แยกคำศัพท์ออกเป็นรายการ
-    const words = data.split('\n').filter(word => word.trim() !== '');
-
-    // สร้างไฟล์ตามแต่ละคำศัพท์ทีละชุด
-    await words.reduce((promise, word) => {
-      const wordConverter = word ? word.toLowerCase() : word;
-      return promise.then(async () => await convertTextToFile(wordConverter, directoryPath));
-    }, Promise.resolve());
-
-    // พิมพ์ข้อความ success เมื่อการทำงานทั้งหมดเสร็จสิ้น
-    console.log('\nAll files have been created successfully.');
-
-    // ZIP โฟลเดอร์ level 1
-    await zipDirectories(directoryPath, zipFolderPath);
-    console.log('\nAll files have been Zip successfully.');
-        
-    // สร้างรายงานขนาดโฟลเดอร์และลิสต์ของไฟล์
-    await generateReports(directoryPath, reportFolderPath);
-    console.log('\nAll files Reports have been created successfully.');
-
-
-
-  } catch (err) {
-    console.error('Error reading file', err);
-  }
-}
-
 // ฟังก์ชั่นสำหรับสร้างรายงานขนาดโฟลเดอร์และลิสต์ของไฟล์
 async function generateReports(sourceDir, targetDir) {
   try {
@@ -159,6 +186,59 @@ async function getFolderSize(dirPath) {
   return totalSize;
 }
 
+// ฟังก์ชั่นในการจัดการกับฐานข้อมูล
+async function  manageDatabase() {
+  await sequelize.sync({ force: true });
+
+  const dictionary = fs.readFileSync(inputFilePath, 'utf-8');
+  const words = dictionary.split('\n').filter(word => word.length > 0).map(word => ({ word }));
+
+  await Word.bulkCreate(words);
+
+  // 7.1 คำที่มีความยาว > 5 ตัวอักษร
+  const longWordsCount = await Word.count({
+    where: sequelize.where(sequelize.fn('length', sequelize.col('word')), '>', 5)
+  });
+
+  // 7.2 คำที่มีตัวอักษรซ้ำมากกว่า 2 ตัวอักษร
+  const repeatedCharWordsCount = (await Word.findAll()).filter(word => /(.)\1/.test(word.word)).length;
+
+  // 7.3 คำที่ขึ้นต้นและลงท้ายด้วยตัวอักษรเดียวกัน
+  const sameStartEndCount = await Word.count({
+    where: sequelize.where(
+      sequelize.fn('SUBSTR', sequelize.col('word'), 1, 1),
+      sequelize.fn('SUBSTR', sequelize.col('word'), -1, 1)
+    )
+  });
+
+  // 7.4 อัพเดตคำให้ตัวอักษรตัวแรกเป็นตัวพิมพ์ใหญ่
+  await sequelize.query(`UPDATE Words SET word = UPPER(SUBSTR(word, 1, 1)) || SUBSTR(word, 2)`);
+
+  console.log(`7.1 มีคำกี่คำที่มีความยาว > 5 character : ${longWordsCount}`);
+  console.log(`7.2 มีคำกี่คำที่มีตัวอักษรซ้ำในคำมากกว่าหรือเท่ากับ 2 character: ${repeatedCharWordsCount}`);
+  console.log(`7.3 มีคำกี่คำที่ขึ้นต้นและลงท้ายด้วยตัวอักษรเดียวกัน : ${sameStartEndCount}`);
+  console.log('อัพเดตคำเสร็จเรียบร้อย');
+};
+
+// ฟังก์ชั่นในการ export ข้อมูลเป็น PDF
+async function  exportToPDF(){
+  await ensureDirectoryExistence(pdfFolderPath);
+  const words = await Word.findAll({ order: [['word', 'ASC']] });
+  const pdfPath = path.join(pdfFolderPath, 'words.pdf');
+  const doc = new PDFDocument({ size: 'A4', margin: 50 });
+
+  doc.pipe(fs.createWriteStream(pdfPath));
+
+  doc.fontSize(12);
+  words.forEach(word => {
+    doc.text(word.word);
+  });
+
+  doc.end();
+  console.log('Exported words to PDF:', pdfPath);
+};
+
+
 // ฟังก์ชั่นสำหรับสร้างรายงานขนาดของโฟลเดอร์
 async function createReportFile(dirPath, reportPath, zipFilePath) {
   try {
@@ -190,5 +270,4 @@ const getFileSize = filePath => {
   const stats = fs.statSync(filePath);
   return stats.size;
 };
-
 module.exports = { readFile, convertTextToFile };
