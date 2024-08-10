@@ -47,21 +47,21 @@ async function readFile() {
     const words = data.split('\n').filter(word => word.trim() !== '');
 
     // สร้างไฟล์ตามแต่ละคำศัพท์ทีละชุด
-    // await words.reduce((promise, word) => {
-    //   const wordConverter = word ? word.toLowerCase() : word;
-    //   return promise.then(async () => await convertTextToFile(wordConverter, directoryPath));
-    // }, Promise.resolve());
+    await words.reduce((promise, word) => {
+      const wordConverter = word ? word.toLowerCase() : word;
+      return promise.then(async () => await convertTextToFile(wordConverter, directoryPath));
+    }, Promise.resolve());
 
-    // // พิมพ์ข้อความ success เมื่อการทำงานทั้งหมดเสร็จสิ้น
-    // console.log('\nAll files have been created successfully.');
+    // พิมพ์ข้อความ success เมื่อการทำงานทั้งหมดเสร็จสิ้น
+    console.log('\nAll files have been created successfully.');
 
-    // // ZIP โฟลเดอร์ level 1
-    // await zipDirectories(directoryPath, zipFolderPath);
-    // console.log('\nAll files have been Zip successfully.');
+    // ZIP โฟลเดอร์ level 1
+    await zipDirectories(directoryPath, zipFolderPath);
+    console.log('\nAll files have been Zip successfully.');
         
-    // // สร้างรายงานขนาดโฟลเดอร์และลิสต์ของไฟล์
-    // await generateReports(directoryPath, reportFolderPath);
-    // console.log('\nAll files Reports have been created successfully.');
+    // สร้างรายงานขนาดโฟลเดอร์และลิสต์ของไฟล์
+    await generateReports(directoryPath, reportFolderPath);
+    console.log('\nAll files Reports have been created successfully.');
 
     // สร้างไฟล์
     await manageDatabase();
@@ -214,9 +214,9 @@ async function  manageDatabase() {
   // 7.4 อัพเดตคำให้ตัวอักษรตัวแรกเป็นตัวพิมพ์ใหญ่
   await sequelize.query(`UPDATE Words SET word = UPPER(SUBSTR(word, 1, 1)) || SUBSTR(word, 2)`);
 
-  console.log(`7.1 มีคำกี่คำที่มีความยาว > 5 character : ${longWordsCount}`);
-  console.log(`7.2 มีคำกี่คำที่มีตัวอักษรซ้ำในคำมากกว่าหรือเท่ากับ 2 character: ${repeatedCharWordsCount}`);
-  console.log(`7.3 มีคำกี่คำที่ขึ้นต้นและลงท้ายด้วยตัวอักษรเดียวกัน : ${sameStartEndCount}`);
+  console.log(`7.1 มีคำกี่คำที่มีความยาว > 5 character : ${longWordsCount} คำ`);
+  console.log(`7.2 มีคำกี่คำที่มีตัวอักษรซ้ำในคำมากกว่าหรือเท่ากับ 2 character: ${repeatedCharWordsCount} คำ`);
+  console.log(`7.3 มีคำกี่คำที่ขึ้นต้นและลงท้ายด้วยตัวอักษรเดียวกัน : ${sameStartEndCount} คำ`);
   console.log('อัพเดตคำเสร็จเรียบร้อย');
 };
 
