@@ -1,16 +1,17 @@
-const express = require('express');
 const fsPromises = require('fs').promises;
-const fs = require('fs');
+var fs = require('graceful-fs');
 const path = require('path');
 const archiver = require('archiver');
 const { Sequelize, DataTypes, Op } = require('sequelize');
 const PDFDocument = require('pdfkit');
+const limit = require('promise-limit')(6000);
 
 const directoryPath = '/test-project-Node/func/test-1/fileExport';
 const inputFilePath = '/test-project-Node/public/data/20k-word.txt';
 const zipFolderPath = '/test-project-Node/func/test-1/zipFile';
 const reportFolderPath = '/test-project-Node/func/test-1/reportFile';
 const pdfFolderPath = '/test-project-Node/func/test-1/pdfFile';
+
 
 // ตั้งค่าโฟลเดอร์ฐานข้อมูล
 const databaseDir = path.join(__dirname, 'database');
@@ -23,6 +24,7 @@ const sequelize = new Sequelize({
   storage: path.join(databaseDir, 'dictionary.sqlite'),
   logging: false // ปิดการแสดงผล query logs
 });
+
 // กำหนด model สำหรับคำศัพท์
 const Word = sequelize.define('Word', {
   word: {
@@ -33,50 +35,40 @@ const Word = sequelize.define('Word', {
 }, {
   timestamps: false
 });
-
-// เริ่มนับเวลา
 console.time('Execution Time');
 
 // ฟังก์ชั่นสำหรับอ่านไฟล์และสร้างไฟล์ตามแต่ละคำศัพท์
-async function readFile() {
-  if (!inputFilePath || !directoryPath) {
-    console.error('Input file path or directory path is not defined.');
-    process.exit(1);
-  }
-
+async function readFileFaster() {
   try {
     const data = await fsPromises.readFile(inputFilePath, 'utf8');
-    // แยกคำศัพท์ออกเป็นรายการ
     const words = data.split('\n').filter(word => word.trim() !== '');
+    await ensureDirectoryExistence(directoryPath);
+    // สร้างไฟล์ทีละ 6000
+    const promises = words.map(word => 
+      limit(() => convertTextToFileFaster(word.toLowerCase(), directoryPath))
+    );
+    
+    await Promise.all(promises);
+    // await Promise.all(words.map(word => convertTextToFileFaster(word.toLowerCase(), directoryPath)));
 
-    // สร้างไฟล์ตามแต่ละคำศัพท์ทีละชุด
-    await words.reduce((promise, word) => {
-      const wordConverter = word ? word.toLowerCase() : word;
-      return promise.then(async () => await convertTextToFile(wordConverter, directoryPath));
-    }, Promise.resolve());
-
-    // พิมพ์ข้อความ success เมื่อการทำงานทั้งหมดเสร็จสิ้น
     console.log('\nAll files have been created successfully.');
 
-    // ZIP โฟลเดอร์ level 1
     await zipDirectories(directoryPath, zipFolderPath);
     console.log('\nAll files have been Zip successfully.');
         
-    // สร้างรายงานขนาดโฟลเดอร์และลิสต์ของไฟล์
     await generateReports(directoryPath, reportFolderPath);
     console.log('\nAll files Reports have been created successfully.');
 
-    // สร้างไฟล์
     await manageDatabase();
     await exportToPDF().then(() => {
-      console.log('\nExecution Time V.1');
+      console.log('\nExecution Time V.1 Fast');
 
       // จบการนับเวลาและแสดงผลในคอนโซล
       console.timeEnd('Execution Time');
     })
     .catch(err => {
       console.error('Error in processing', err);
-      console.log('\nExecution Time V.1');
+      console.log('\nExecution Time V.1 Fast');
       console.timeEnd('Execution Time');
     });
     console.log('\n files Manage Database And Export PDF have been created successfully.');
@@ -90,7 +82,6 @@ async function readFile() {
 async function ensureDirectoryExistence(dirPath) {
   try {
     await fsPromises.mkdir(dirPath, { recursive: true });
-    process.stdout.write(`Directory created: ${dirPath}\r`);
   } catch (err) {
     if (err.code !== 'EEXIST') {
       throw err;
@@ -99,10 +90,10 @@ async function ensureDirectoryExistence(dirPath) {
 }
 
 // ฟังก์ชั่นสำหรับสร้างไฟล์
-async function convertTextToFile(word, directoryPath) {
+async function convertTextToFileFaster(word, directoryPath) {
+
   const trimmedWord = word.trim();
   if (trimmedWord.length < 2) {
-    // console.error(`Word ${word} is too short to categorize.`);
     return;
   }
 
@@ -113,11 +104,8 @@ async function convertTextToFile(word, directoryPath) {
   const filePath = path.join(secondLevelDir, fileName);
 
   try {
-    // สร้างไดเรกทอรีหากยังไม่มี
     await ensureDirectoryExistence(secondLevelDir);
-    // เขียนไฟล์
     await fsPromises.writeFile(filePath, content);
-    process.stdout.write(`File ${fileName} has been created successfully at ${secondLevelDir}.\r`);
   } catch (err) {
     console.error(`Error writing to file ${fileName}`, err);
   }
@@ -129,14 +117,13 @@ async function zipDirectories(sourceDir, targetDir) {
     const firstLevelDirs = await fsPromises.readdir(sourceDir, { withFileTypes: true });
     await ensureDirectoryExistence(targetDir);
 
-    for (const dir of firstLevelDirs) {
+    await Promise.all(firstLevelDirs.map(dir => {
       if (dir.isDirectory()) {
         const sourcePath = path.join(sourceDir, dir.name);
         const zipPath = path.join(targetDir, `${dir.name}.zip`);
-        await zipDirectory(sourcePath, zipPath);
-        process.stdout.write(`Zipped ${dir.name} to ${zipPath}\r`);
+        return zipDirectory(sourcePath, zipPath);
       }
-    }
+    }));
   } catch (err) {
     console.error('Error zipping directories', err);
   }
@@ -144,7 +131,7 @@ async function zipDirectories(sourceDir, targetDir) {
 
 // ฟังก์ชั่นสำหรับ ZIP โฟลเดอร์เดี่ยว
 function zipDirectory(sourceDir, outPath) {
-  return new Promise(async (resolve, reject) => {
+  return new Promise((resolve, reject) => {
     const output = fs.createWriteStream(outPath);
     const archive = archiver('zip', {
       zlib: { level: 9 } // ตั้งค่า compression level
@@ -153,8 +140,7 @@ function zipDirectory(sourceDir, outPath) {
     output.on('close', () => resolve());
     archive.on('error', err => reject(err));
     archive.pipe(output);
-    await archive.directory(sourceDir, false);
-    await archive.finalize();
+    archive.directory(sourceDir, false).finalize();
   });
 }
 
@@ -164,14 +150,14 @@ async function generateReports(sourceDir, targetDir) {
     const firstLevelDirs = await fsPromises.readdir(sourceDir, { withFileTypes: true });
     await ensureDirectoryExistence(targetDir);
 
-    for (const dir of firstLevelDirs) {
+    await Promise.all(firstLevelDirs.map(dir => {
       if (dir.isDirectory()) {
         const dirPath = path.join(sourceDir, dir.name);
         const zipPath = path.join(zipFolderPath, `${dir.name}.zip`);
         const reportPath = path.join(targetDir, `Report${dir.name}.txt`);
-        await createReportFile(dirPath, reportPath, zipPath);
+        return createReportFile(dirPath, reportPath, zipPath);
       }
-    }
+    }));
   } catch (err) {
     console.error('Error generating reports', err);
   }
@@ -187,10 +173,8 @@ async function getFolderSize(dirPath) {
     const filePath = path.join(dirPath, file.name);
 
     if (file.isDirectory()) {
-      // ถ้าเป็นโฟลเดอร์ ให้คำนวณขนาดของโฟลเดอร์นั้น
       totalSize += await getFolderSize(filePath);
     } else {
-      // ถ้าเป็นไฟล์ ให้คำนวณขนาดของไฟล์
       const stats = await fs.promises.stat(filePath);
       totalSize += stats.size;
     }
@@ -200,7 +184,7 @@ async function getFolderSize(dirPath) {
 }
 
 // ฟังก์ชั่นในการจัดการกับฐานข้อมูล
-async function  manageDatabase() {
+async function manageDatabase() {
   await sequelize.sync({ force: true });
 
   const dictionary = fs.readFileSync(inputFilePath, 'utf-8');
@@ -208,15 +192,12 @@ async function  manageDatabase() {
 
   await Word.bulkCreate(words);
 
-  // 7.1 คำที่มีความยาว > 5 ตัวอักษร
   const longWordsCount = await Word.count({
     where: sequelize.where(sequelize.fn('length', sequelize.col('word')), '>', 5)
   });
 
-  // 7.2 คำที่มีตัวอักษรซ้ำมากกว่า 2 ตัวอักษร
   const repeatedCharWordsCount = (await Word.findAll()).filter(word => /(.)\1/.test(word.word)).length;
 
-  // 7.3 คำที่ขึ้นต้นและลงท้ายด้วยตัวอักษรเดียวกัน
   const sameStartEndCount = await Word.count({
     where: sequelize.where(
       sequelize.fn('SUBSTR', sequelize.col('word'), 1, 1),
@@ -224,17 +205,16 @@ async function  manageDatabase() {
     )
   });
 
-  // 7.4 อัพเดตคำให้ตัวอักษรตัวแรกเป็นตัวพิมพ์ใหญ่
   await sequelize.query(`UPDATE Words SET word = UPPER(SUBSTR(word, 1, 1)) || SUBSTR(word, 2)`);
 
   console.log(`7.1 มีคำกี่คำที่มีความยาว > 5 character : ${longWordsCount} คำ`);
   console.log(`7.2 มีคำกี่คำที่มีตัวอักษรซ้ำในคำมากกว่าหรือเท่ากับ 2 character: ${repeatedCharWordsCount} คำ`);
   console.log(`7.3 มีคำกี่คำที่ขึ้นต้นและลงท้ายด้วยตัวอักษรเดียวกัน : ${sameStartEndCount} คำ`);
   console.log('อัพเดตคำเสร็จเรียบร้อย');
-};
+}
 
 // ฟังก์ชั่นในการ export ข้อมูลเป็น PDF
-async function  exportToPDF(){
+async function exportToPDF() {
   await ensureDirectoryExistence(pdfFolderPath);
   const words = await Word.findAll({ order: [['word', 'ASC']] });
   const pdfPath = path.join(pdfFolderPath, 'words.pdf');
@@ -249,30 +229,22 @@ async function  exportToPDF(){
 
   doc.end();
   console.log('Exported words to PDF:', pdfPath);
-};
-
+}
 
 // ฟังก์ชั่นสำหรับสร้างรายงานขนาดของโฟลเดอร์
 async function createReportFile(dirPath, reportPath, zipFilePath) {
   try {
-    // คำนวณขนาดของโฟลเดอร์ก่อนการบีบอัด
     const folderSizeBefore = await getFolderSize(dirPath);
-    
-    // คำนวณขนาดของไฟล์ ZIP
     const zipSize = getFileSize(zipFilePath);
-    // คำนวณเปอร์เซ็นต์การบีบอัด
     const percentageReduction = (((folderSizeBefore / 1024) - (zipSize / 1024)) / (folderSizeBefore / 1024)) * 100;
-    // สร้างเนื้อหาของรายงาน
     const reportContent = `
       Report for directory: ${path.basename(dirPath)}
 
       Size before zip: ${(folderSizeBefore / 1024).toFixed(4)} KB
       Size after zip: ${(zipSize / 1024).toFixed(4)} KB
       Compression reduction: ${percentageReduction.toFixed(2)}%
-
     `;
 
-    process.stdout.write(`Report created at ${reportPath}\r`);
     await fs.promises.writeFile(reportPath, reportContent);
   } catch (err) {
     console.error(`Error creating report for ${dirPath}`, err);
@@ -283,4 +255,5 @@ const getFileSize = filePath => {
   const stats = fs.statSync(filePath);
   return stats.size;
 };
-module.exports = { readFile, convertTextToFile };
+
+module.exports = { readFileFaster, convertTextToFileFaster };
